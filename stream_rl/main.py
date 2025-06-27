@@ -1,11 +1,26 @@
 import asyncio
-from typing import List
+import json
+from typing import List, Dict
 
 from .agents import Agent
 from .environment import GuessPhraseEnv
 from .ui import RLConfig, gather_config
 
-async def run_cycle(env: GuessPhraseEnv, agents: List[Agent], cycle: int) -> List[str]:
+
+def add_message(messages: List[Dict[str, str]], agent_name: str, content: str) -> None:
+    """Add a message and convert previous messages from this agent to assistant."""
+    for m in messages:
+        if m.get("speaker") == agent_name:
+            m["role"] = "assistant"
+    messages.append({"role": agent_name, "speaker": agent_name, "content": content})
+
+
+def print_messages(messages: List[Dict[str, str]]) -> None:
+    display = [{"role": m["role"], "content": m["content"]} for m in messages]
+    print("messages:")
+    print(json.dumps(display, indent=4))
+
+async def run_cycle(env: GuessPhraseEnv, agents: List[Agent], cycle: int, messages: List[Dict[str, str]]) -> List[str]:
     streams = [agent.generate_stream(env.target) for agent in agents]
     tasks = {i: asyncio.create_task(stream.__anext__()) for i, stream in enumerate(streams)}
     tokens = [[] for _ in agents]
@@ -15,7 +30,8 @@ async def run_cycle(env: GuessPhraseEnv, agents: List[Agent], cycle: int) -> Lis
             if t in done:
                 try:
                     token = t.result()
-                    print(f"<{agents[i].name}>\n{token}\n<{agents[i].name}/>\n")
+                    add_message(messages, agents[i].name, token)
+                    print_messages(messages)
                     tokens[i].append(token)
                     tasks[i] = asyncio.create_task(streams[i].__anext__())
                 except StopAsyncIteration:
@@ -36,8 +52,9 @@ async def main():
     cycles = int(input("Number of cycles: ") or 3)
     agents = [Agent(cfg.name, cfg.system_message) for cfg in agents_cfg]
     env = GuessPhraseEnv(task)
+    messages = []
     for c in range(cycles):
-        await run_cycle(env, agents, c+1)
+        await run_cycle(env, agents, c+1, messages)
 
 if __name__ == "__main__":
     asyncio.run(main())
