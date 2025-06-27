@@ -7,11 +7,11 @@ from .ui import RLConfig, gather_config
 
 async def run_cycle(env: GuessPhraseEnv, agents: List[Agent], cycle: int) -> List[str]:
     streams = [agent.generate_stream(env.target) for agent in agents]
-    tasks = [asyncio.create_task(stream.__anext__()) for stream in streams]
+    tasks = {i: asyncio.create_task(stream.__anext__()) for i, stream in enumerate(streams)}
     tokens = [[] for _ in agents]
     while tasks:
-        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        for i, t in enumerate(tasks):
+        done, _ = await asyncio.wait(tasks.values(), return_when=asyncio.FIRST_COMPLETED)
+        for i, t in list(tasks.items()):
             if t in done:
                 try:
                     token = t.result()
@@ -19,10 +19,8 @@ async def run_cycle(env: GuessPhraseEnv, agents: List[Agent], cycle: int) -> Lis
                     tokens[i].append(token)
                     tasks[i] = asyncio.create_task(streams[i].__anext__())
                 except StopAsyncIteration:
-                    tasks.remove(t)
+                    del tasks[i]
                     streams[i] = None
-                    tasks[i] = None
-        tasks = [t for t in tasks if t]
     scores = [env.score(tok) for tok in tokens]
     winner_idx = scores.index(max(scores))
     winner_tokens = tokens[winner_idx]
