@@ -1,3 +1,5 @@
+https://www.youtube.com/watch?v=uOrJUksvIhs
+
 # Multi-Agent Streaming System for Collaborative Problem Solving
 
 A token-level interleaved multi-agent system where AI agents collaborate to solve problems by streaming their thoughts and solutions in real-time with different visibility modes.
