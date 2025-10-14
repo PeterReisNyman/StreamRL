@@ -1,16 +1,25 @@
-# Multi-Agent Streaming System
+# Multi-Agent Streaming System for Collaborative Problem Solving
 
-A system where multiple AI agents stream tokens and can communicate with different visibility modes.
+A token-level interleaved multi-agent system where AI agents collaborate to solve problems by streaming their thoughts and solutions in real-time with different visibility modes.
+
+## Key Application: Collaborative Problem Solving
+
+This system enables multiple specialized AI agents to work together on complex problems:
+- **Creative Agent**: Generates innovative ideas and approaches
+- **Analytical Agent**: Evaluates feasibility and identifies issues
+- **Practical Agent**: Focuses on implementation and actionable steps
+
+Each agent sees the others' tokens **as they're generated** and can respond immediately, creating tight feedback loops and richer collaboration.
 
 ## Features
 
-- **Multiple AI Agents**: Each agent has a unique name and can stream responses
+- **Token-Level Interleaving**: Agents take turns generating one token at a time, seeing all previous tokens before generating their next one
+- **True Context Sharing**: Each agent sees the full conversation history before each token generation
 - **Two Visibility Modes**:
-  - `<broadcast>` 📢: Tokens visible to all agents
-  - `<internal>` 🤔: Tokens only visible to the agent itself (private thinking)
-- **Real-time Token Streaming**: See each token as it's generated
-- **Message Routing**: Agents only see messages they're allowed to see
-- **Tool System**: Agents can switch modes mid-stream
+  - `<broadcast>` 📢: Tokens visible to all agents (public discussion)
+  - `<internal>` 🤔: Tokens only visible to the agent itself (private thinking/brainstorming)
+- **Real-time Collaboration**: Agents react to partial information, not just complete thoughts
+- **Specialized Roles**: Each agent brings unique perspective to problem-solving
 
 ## Installation
 
@@ -50,9 +59,20 @@ asyncio.run(main())
 
 ### Running the Demo
 
+The demo showcases collaborative problem solving with three agents tackling a real-world challenge:
+
 ```bash
 python multi_agent_stream.py
 ```
+
+**Demo Problem**: How can a small town library increase youth engagement by 50% with a $5,000 budget?
+
+Watch as:
+- **Alice** (Creative) brainstorms innovative ideas using `<internal>` mode, then shares via `<broadcast>`
+- **Bob** (Analytical) evaluates feasibility and identifies potential issues
+- **Charlie** (Practical) provides concrete implementation steps and budget considerations
+
+You'll see token-level interleaving in action and how agents build on each other's ideas!
 
 ## How It Works
 
@@ -120,7 +140,14 @@ visible_messages = alice.get_visible_messages()
 
 ## Use Cases
 
-- Multi-agent debates and discussions
-- Collaborative problem solving with private reasoning
-- AI roleplay scenarios with hidden thoughts
-- Research simulations with information asymmetry
+### Primary: Collaborative Problem Solving
+- **Business Strategy**: Creative, analytical, and practical agents collaborate on business challenges
+- **Product Design**: Innovation, technical feasibility, and user experience perspectives
+- **System Optimization**: Multiple viewpoints on complex system improvements
+- **Research Questions**: Interdisciplinary collaboration with different methodological approaches
+
+### Other Applications
+- **Multi-agent debates**: Agents argue positions with private strategy planning
+- **Educational simulations**: Demonstrate how different perspectives interact
+- **Creative writing**: Multiple authors building narratives with private plotting
+- **Game theory research**: Study strategic interactions with hidden information

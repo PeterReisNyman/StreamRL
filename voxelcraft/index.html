@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2387b1ff'/%3E%3Cpath d='M3 11h10V5L8 2 3 5z' fill='%23ffffff'/%3E%3C/svg%3E">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voxelcraft - Minimal Voxel World</title>
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgo=" />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #87b1ff; }
+      #overlay { position: absolute; top: 10px; left: 10px; color: #fff; font: 14px/1.4 -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+      #instructions { opacity: 0.9; }
+      #debug { margin-top: 8px; font-size: 12px; opacity: 0.85; }
+      #lock { display: inline-block; padding: 6px 10px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; cursor: pointer; }
+      .slot { position: relative; }
+      .slot .count { position: absolute; right: 4px; bottom: 2px; font-size: 10px; opacity: 0.9; }
+      #crosshair { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin-left: -8px; margin-top: -8px; pointer-events: none; opacity: 0.7; }
+      #crosshair:before, #crosshair:after { content: ""; position: absolute; background: rgba(255,255,255,0.8); }
+      #crosshair:before { left: 7px; top: 0; width: 2px; height: 16px; }
+      #crosshair:after { left: 0; top: 7px; width: 16px; height: 2px; }
+      #hotbar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 6px; align-items: center; }
+      .slot { width: 44px; height: 44px; background: rgba(0,0,0,0.35); border: 2px solid rgba(255,255,255,0.35); border-radius: 6px; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; text-shadow: 0 1px 2px rgba(0,0,0,0.6); cursor: pointer; user-select: none; }
+      .slot span { font-size: 12px; font-weight: 600; }
+      .slot.active { border-color: #ffd24d; box-shadow: 0 0 0 2px rgba(255,210,77,0.5); }
+      #toolbar { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; max-width: 50vw; }
+      #toolbar button { padding: 6px 8px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; color: #fff; cursor: pointer; }
+      /* Minimap styles removed */
+    </style>
+  </head>
+  <body>
+    <canvas id="gl"></canvas>
+    <div id="crosshair"></div>
+
+    <!-- Overlay: instructions, debug, and pointer lock button -->
+    <div id="overlay">
+      <div id="instructions">WASD to move, Mouse to look, G: Free Cam, F2 screenshot, F9 new world</div>
+      <div id="debug"></div>
+      <div id="lock">Click to Lock Pointer</div>
+    </div>
+
+    <!-- Assistant panel: lets you send a screenshot to the repo for analysis -->
+    <div id="assistantPanel" style="position:absolute; left:10px; bottom:12px; display:flex; gap:8px; align-items:center; color:#fff; font: 12px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; text-shadow:0 1px 2px rgba(0,0,0,0.6);">
+      <button id="assistSave" title="Send current view for assistant (Shift+F2)" style="padding:6px 8px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; color: #fff; cursor: pointer;">Send to Assistant</button>
+      <button id="assistAuto" title="Toggle auto-capture for assistant (Shift+A)" style="padding:6px 8px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; color: #fff; cursor: pointer;">Auto: Off</button>
+      <span id="assistStatus" style="opacity:0.9;"></span>
+    </div>
+
+    <!-- Minimap -->
+      <!-- Minimap removed for minimal build -->
+
+    <!-- Toolbar: edits, LOD, and seed controls -->
+    <div id="toolbar">
+      <button id="exportEdits" title="Export placed blocks">Export</button>
+      <button id="importEdits" title="Import placed blocks">Import</button>
+      <button id="clearEdits" title="Clear all local edits">Clear Edits</button>
+      <button id="screenshot" title="Save screenshot (download)">Screenshot</button>
+      <button id="saveShotRepo" title="Save screenshot into repo">Save Shot</button>
+      <!-- Undo/Redo removed for minimal build -->
+      <button id="lodBtn" title="Toggle far terrain LOD">Far LOD</button>
+      <button id="noFlyBtn" title="Disable/enable flying for player">No Fly: Off</button>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <input id="seedInput" type="text" placeholder="Seed" style="width:140px; padding:4px 6px; border-radius:4px; border:1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.25); color:#fff;">
+        <button id="applySeed" title="Regenerate with seed">Apply Seed</button>
+        <button id="randomSeed" title="Random seed">Random</button>
+      </div>
+      <!-- Inventory removed for minimal build -->
+    </div>
+
+    <!-- Hotbar -->
+    <div id="hotbar"></div>
+
+    <!-- Inventory UI removed -->
+
+    <!-- Players overlay removed (single-player only) -->
+    <script type="module" src="./main.js"></script>
+  </body>
+  </html>
