@@ -16,7 +16,7 @@ echo "================================================"
 
 # Start VoxelCraft server in background
 echo "Starting VoxelCraft server..."
-python run_voxelcraft.py &
+python3 run_voxelcraft.py &
 SERVER_PID=$!
 
 # Wait for server to start
@@ -34,7 +34,7 @@ echo "Starting AI agents..."
 echo ""
 
 # Run AI agents
-python voxelcraft_ai_controller.py
+python3 voxelcraft_ai_controller.py
 
 # Cleanup: kill server when agents finish
 echo ""

@@ -45,7 +45,7 @@ pip install -r requirements_multiagent.txt
 
 In one terminal:
 ```bash
-python run_voxelcraft.py
+python3 run_voxelcraft.py
 ```
 
 This opens VoxelCraft in your browser. Keep this running.
@@ -54,7 +54,7 @@ This opens VoxelCraft in your browser. Keep this running.
 
 In another terminal:
 ```bash
-python voxelcraft_ai_controller.py
+python3 voxelcraft_ai_controller.py
 ```
 
 ### Step 3: Watch Them Build!

@@ -18,7 +18,7 @@ The core multi-agent communication system with token-level interleaving.
 **Use Case:** Collaborative problem solving where multiple perspectives tackle complex challenges.
 
 ```bash
-python multi_agent_stream.py
+python3 multi_agent_stream.py
 ```
 
 ---
@@ -37,7 +37,7 @@ A 2D grid-based treasure hunt where AI agents compete to collect items.
 **Use Case:** Demonstrating AI spatial reasoning and competitive behavior in a simple environment.
 
 ```bash
-python agent_world_game.py
+python3 agent_world_game.py
 ```
 
 ---
@@ -62,10 +62,10 @@ python agent_world_game.py
 **Quick Start:**
 ```bash
 # Terminal 1: Start VoxelCraft
-python run_voxelcraft.py
+python3 run_voxelcraft.py
 
 # Terminal 2: Run AI agents
-python voxelcraft_ai_controller.py
+python3 voxelcraft_ai_controller.py
 
 # Or use the quick start script:
 ./start_voxelcraft_demo.sh
@@ -214,7 +214,7 @@ bob = VoxelAgent("Bob", client, bob_client, model="gpt-4-turbo")
 curl http://127.0.0.1:8000/snapshot?room=ai_agents
 
 # Restart server
-python run_voxelcraft.py
+python3 run_voxelcraft.py
 ```
 
 ### Agents not appearing

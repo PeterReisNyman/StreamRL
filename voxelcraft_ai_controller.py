@@ -107,9 +107,9 @@ class VoxelCraftClient:
 
         try:
             requests.post(f"{self.base_url}/publish", json=payload, timeout=1)
-            print(f"Placed {block_type.name} at ({block_x}, {block_y}, {block_z})")
+            print(f"✨ Placed {block_type.name} at ({block_x}, {block_y}, {block_z}) ✨")
         except Exception as e:
-            print(f"Error placing block: {e}")
+            print(f"❌ Error placing block: {e}")
 
     def break_block(self, block_x: int, block_y: int, block_z: int):
         """Break a block in the world"""
@@ -388,7 +388,8 @@ Choose ONE action. Start in <internal> mode to think, then optionally use <broad
 
         # Update position on server
         self.voxel_client.send_position(self.name, self.color)
-        print(f"[{self.name}] ✓ Executed {action.name}")
+        pos = self.voxel_client.position
+        print(f"[{self.name}] ✓ Executed {action.name} | Now at ({pos.x:.1f}, {pos.y:.1f}, {pos.z:.1f})")
 
 
 async def run_voxelcraft_agents():
@@ -403,24 +404,26 @@ async def run_voxelcraft_agents():
     # Create VoxelCraft clients for each agent
     room = "ai_agents"
 
+    # Spawn agents close together so you can see their work
+    # Player spawns at (0, 120, 0), so place agents nearby
     alice_client = VoxelCraftClient(room=room)
-    alice_client.position = VoxelPosition(0, 120, 0, 0, 0)
+    alice_client.position = VoxelPosition(5, 120, 5, 0, 0)  # Southeast of player
 
     bob_client = VoxelCraftClient(room=room)
-    bob_client.position = VoxelPosition(10, 120, 0, 1.57, 0)
+    bob_client.position = VoxelPosition(-5, 120, 5, 0, 0)  # Southwest of player
 
     charlie_client = VoxelCraftClient(room=room)
-    charlie_client.position = VoxelPosition(0, 120, 10, -1.57, 0)
+    charlie_client.position = VoxelPosition(0, 120, -5, 0, 0)  # North of player
 
-    # Create AI agents
+    # Create AI agents with tasks that build UPWARD (easy to see)
     alice = VoxelAgent("Alice", client, alice_client, color="#ff0000")
-    alice.set_task("Build a tower out of stone blocks")
+    alice.set_task("Build a tall STONE tower directly upward - place blocks ABOVE your current position using <move_up> then <place_stone>")
 
     bob = VoxelAgent("Bob", client, bob_client, color="#00ff00")
-    bob.set_task("Build a house out of wood blocks")
+    bob.set_task("Build a tall WOOD tower directly upward - place blocks ABOVE your current position using <move_up> then <place_wood>")
 
     charlie = VoxelAgent("Charlie", client, charlie_client, color="#0000ff")
-    charlie.set_task("Create a garden with grass blocks")
+    charlie.set_task("Build a tall GRASS tower directly upward - place blocks ABOVE your current position using <move_up> then <place_grass>")
 
     agents = [alice, bob, charlie]
 
@@ -428,6 +431,13 @@ async def run_voxelcraft_agents():
     print("🎮 AI AGENTS IN VOXELCRAFT 🎮")
     print("="*60)
     print("\nThree AI agents are now operating in VoxelCraft!")
+    print("\n🎯 WHERE TO LOOK:")
+    print("="*60)
+    print(f"📍 Alice (STONE tower): Position (5, 120, 5) - Southeast")
+    print(f"📍 Bob (WOOD tower): Position (-5, 120, 5) - Southwest")
+    print(f"📍 Charlie (GRASS tower): Position (0, 120, -5) - North")
+    print(f"\n💡 TIP: You spawn at (0, 120, 0). Look around to see towers!")
+    print(f"💡 Each tower will build UPWARD from ground level")
     print("\nTo view them, open:")
     print(f"  http://127.0.0.1:8000/index.html?room={room}&name=Observer")
     print("\n" + "="*60)
@@ -471,8 +481,21 @@ async def run_voxelcraft_agents():
     print("\n" + "="*60)
     print("🏁 AI AGENTS COMPLETE! 🏁")
     print("="*60)
-    print("\nCheck VoxelCraft to see what they built!")
+    print("\n🏗️ BUILDING SUMMARY:")
+    print("="*60)
+    for agent in agents:
+        pos = agent.voxel_client.position
+        print(f"📍 {agent.name}: Final position ({pos.x:.1f}, {pos.y:.1f}, {pos.z:.1f})")
+
+    print("\n💡 TO VIEW THE STRUCTURES:")
+    print("="*60)
+    print("Open VoxelCraft and look around!")
     print(f"  http://127.0.0.1:8000/index.html?room={room}&name=Observer")
+    print("\n🔍 Look in these directions:")
+    print("  - Alice's STONE tower: Southeast (X+, Z+)")
+    print("  - Bob's WOOD tower: Southwest (X-, Z+)")
+    print("  - Charlie's GRASS tower: North (Z-)")
+    print("="*60)
 
 
 if __name__ == "__main__":
