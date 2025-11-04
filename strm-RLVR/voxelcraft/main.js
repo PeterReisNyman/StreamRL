@@ -96,6 +96,10 @@ const cam = { pos:[0, 120, 0], rot:[-0.2, 0.6], vel:[0,0,0], walk:false, onGroun
 // Detached free camera for inspection
 const freeCam = { enabled:false, pos:[0, 123, -6], rot:[-0.2, 0.6] };
 
+// DISCRETE MOVEMENT: Track movement cooldown for stepped movement
+let lastMoveTime = 0;
+const MOVE_COOLDOWN_MS = 150; // milliseconds between discrete steps (adjust for feel)
+
 // World scale: size of one block in meters (tunable). Player is ~8 blocks tall.
 const BLOCK_SIZE_M = 0.33;
 const PLAYER_HEIGHT_BLOCKS = 6.0;          // total height in blocks (player is 6 blocks tall)
@@ -1019,6 +1023,7 @@ function updateViewProj(){
 // Movement
 function move(dt){
   // If free camera is active, freeze the player and move only the camera
+  // Keep free camera continuous for inspection/debugging
   if (freeCam.enabled){
     const base = 12.0 / BLOCK_SIZE_M; // freecam speed in blocks/s
     const speed = key['shift'] ? base*1.7 : base;
@@ -1035,93 +1040,24 @@ function move(dt){
     if (key['shift']) freeCam.pos[1]-=dt*speed;
     return;
   }
-  // Speed scaled by block size so meters/sec stays consistent
-  const WALK_MPS = 4.0, FLY_MPS = 12.0, SPRINT = 1.7;
-  const base = cam.walk ? (WALK_MPS / BLOCK_SIZE_M) : (FLY_MPS / BLOCK_SIZE_M);
-  const speed = key['shift'] ? base*SPRINT : base;
-  const forward = [Math.sin(cam.rot[1]), 0, Math.cos(cam.rot[1])];
-  const right = [Math.cos(cam.rot[1]), 0,-Math.sin(cam.rot[1])];
-  if (!cam.walk){
-    // Fly mode constant velocity control
-    if (key['w']) { cam.pos[0]+=forward[0]*dt*speed; cam.pos[2]+=forward[2]*dt*speed; }
-    if (key['s']) { cam.pos[0]-=forward[0]*dt*speed; cam.pos[2]-=forward[2]*dt*speed; }
-    // Invert A/D to match expected strafing (A = left, D = right)
-    if (key['a']) { cam.pos[0]+=right[0]*dt*speed; cam.pos[2]+=right[2]*dt*speed; }
-    if (key['d']) { cam.pos[0]-=right[0]*dt*speed; cam.pos[2]-=right[2]*dt*speed; }
-    if (key[' ']) cam.pos[1]+=dt*speed;
-    if (key['shift']) cam.pos[1]-=dt*speed;
-    return;
-  }
-  // Walk mode with gravity and simple ground collision (voxel AABB at feet)
-  // Physics scaled to block size: gravity ~9.8 m/s^2 downward
-  const meterPerBlock = BLOCK_SIZE_M;
-  const gravity = -9.8 / meterPerBlock; // blocks/s^2
-  const accel = [0, gravity, 0];
-  const moveDir = [0,0,0];
-  if (key['w']) { moveDir[0]+=Math.sin(cam.rot[1]); moveDir[2]+=Math.cos(cam.rot[1]); }
-  if (key['s']) { moveDir[0]-=Math.sin(cam.rot[1]); moveDir[2]-=Math.cos(cam.rot[1]); }
-  if (key['a']) { moveDir[0]-=Math.cos(cam.rot[1]); moveDir[2]+=Math.sin(cam.rot[1]); }
-  if (key['d']) { moveDir[0]+=Math.cos(cam.rot[1]); moveDir[2]-=Math.sin(cam.rot[1]); }
-  const len = Math.hypot(moveDir[0], moveDir[2]);
-  if (len>0){ moveDir[0]/=len; moveDir[2]/=len; }
-  cam.vel[0] = moveDir[0]*speed;
-  cam.vel[2] = moveDir[2]*speed;
-  // Jump: ~1 meter vertical reach regardless of block size (tunable)
-  const desiredJumpMeters = 1.2; // raise to ensure 3-block jumps at 0.33 m/block
-  const jumpVelBlocksPerSec = Math.sqrt(Math.max(0, 2 * (desiredJumpMeters/BLOCK_SIZE_M) * (-gravity)));
-  if (key[' '] && cam.onGround){ cam.vel[1] = jumpVelBlocksPerSec; cam.onGround=false; }
-  cam.vel[1] += accel[1]*dt;
-  // Attempt vertical move with ground and ceiling collision
-  let nextY = cam.pos[1] + cam.vel[1]*dt;
-  const height = PLAYER_HEIGHT_BLOCKS; // player height in blocks
-  const eyeToFeet = PLAYER_EYE_HEIGHT_BLOCKS; // eye height above feet in blocks
-  let feetY = nextY - eyeToFeet;
-  const wx0 = Math.floor(cam.pos[0]);
-  const wz0 = Math.floor(cam.pos[2]);
-  // Robust ground snap: detect surface under multiple offsets and snap if close
-  function surfaceY(x,z,guess){
-    const offsets=[[0,0],[PLAYER_RADIUS_BLOCKS*0.7,0],[-PLAYER_RADIUS_BLOCKS*0.7,0],[0,PLAYER_RADIUS_BLOCKS*0.7],[0,-PLAYER_RADIUS_BLOCKS*0.7]];
-    let best=-Infinity;
-    for (let i=0;i<offsets.length;i++){
-      const ox=Math.floor(x+offsets[i][0]);
-      const oz=Math.floor(z+offsets[i][1]);
-      const y0=Math.floor(guess)+2;
-      for (let y=y0;y>=y0-6;y--){
-        const below=getVoxelWorld(ox,y-1,oz), cur=getVoxelWorld(ox,y,oz);
-        if ((below!==AIR && below!==WATER) && (cur===AIR || cur===WATER)){
-          // Pick the highest surface level encountered
-          best = y > best ? y : best;
-          break;
-        }
-      }
-    }
-    return best;
-  }
-  const surf = surfaceY(cam.pos[0], cam.pos[2], feetY);
-  const gap = feetY - surf;
-  if (surf>-Infinity && gap<0.25 && cam.vel[1]<=0){
-    cam.onGround=true; cam.vel[1]=0; cam.pos[1]=surf + eyeToFeet + 1e-4;
-  } else {
-    cam.onGround = false;
-    // Ceiling collision: if head intersects a solid block, push down
-    const headY = nextY - eyeToFeet + height;
-    const aboveY = Math.floor(headY + 1e-4);
-    const above = getVoxelWorld(wx0, aboveY, wz0);
-    if (above!==AIR && above!==WATER && headY > aboveY + 1e-4){
-      cam.vel[1] = Math.min(0, cam.vel[1]);
-      cam.pos[1] = aboveY + eyeToFeet - height - 1e-4;
-    } else {
-      cam.pos[1] = nextY;
-    }
-  }
-  // Horizontal collision (prevent walking through walls)
-  const r = PLAYER_RADIUS_BLOCKS; // player radius in blocks
-  function aabbBlocked(x, yFeet, z){
+
+  // ============================================================================
+  // DISCRETE MOVEMENT SYSTEM - Grid-based stepping like classic voxel games
+  // ============================================================================
+
+  const currentTime = Date.now();
+  const canMove = (currentTime - lastMoveTime) >= MOVE_COOLDOWN_MS;
+
+  // Helper: Check if a position would collide with solid blocks
+  const r = PLAYER_RADIUS_BLOCKS;
+  const height = PLAYER_HEIGHT_BLOCKS;
+  const eyeToFeet = PLAYER_EYE_HEIGHT_BLOCKS;
+  function wouldCollide(x, y, z){
+    const feetY = y - eyeToFeet;
     const minX = Math.floor(x - r), maxX = Math.floor(x + r);
     const minZ = Math.floor(z - r), maxZ = Math.floor(z + r);
-    // Use small epsilons to avoid falsely counting blocks just above the head or exactly at feet plane
-    const minY = Math.floor(yFeet + 1e-4);
-    const maxY = Math.floor(yFeet + height - 1e-3);
+    const minY = Math.floor(feetY + 1e-4);
+    const maxY = Math.floor(feetY + height - 1e-3);
     for (let by=minY; by<=maxY; by++){
       for (let bz=minZ; bz<=maxZ; bz++){
         for (let bx=minX; bx<=maxX; bx++){
@@ -1132,70 +1068,102 @@ function move(dt){
     }
     return false;
   }
-  function headBlocked(x, headY, z){
-    const y = Math.floor(headY + 1e-3);
-    const minX = Math.floor(x - r), maxX = Math.floor(x + r);
-    const minZ = Math.floor(z - r), maxZ = Math.floor(z + r);
-    for (let bz=minZ; bz<=maxZ; bz++){
-      for (let bx=minX; bx<=maxX; bx++){
-        const id = getVoxelWorld(bx, y, bz);
-        if (id!==AIR && id!==WATER) return true;
+
+  // Calculate movement direction from camera rotation
+  const forward = [Math.sin(cam.rot[1]), 0, Math.cos(cam.rot[1])];
+  const right = [Math.cos(cam.rot[1]), 0, -Math.sin(cam.rot[1])];
+
+  // Determine movement intent (WASD) - only process if cooldown allows
+  let moveX = 0, moveY = 0, moveZ = 0;
+
+  if (canMove) {
+    if (key['w']) { moveX += forward[0]; moveZ += forward[2]; }
+    if (key['s']) { moveX -= forward[0]; moveZ -= forward[2]; }
+    if (key['a']) { moveX += right[0]; moveZ += right[2]; }
+    if (key['d']) { moveX -= right[0]; moveZ -= right[2]; }
+
+    // Normalize horizontal movement
+    const lenH = Math.sqrt(moveX*moveX + moveZ*moveZ);
+    if (lenH > 0) {
+      moveX /= lenH;
+      moveZ /= lenH;
+    }
+
+    // Vertical movement (fly mode only)
+    if (!cam.walk) {
+      if (key[' ']) moveY = 1;
+      if (key['shift']) moveY = -1;
+    }
+
+    // DISCRETE STEP: Move exactly 1 block in the dominant direction
+    if (moveX !== 0 || moveY !== 0 || moveZ !== 0) {
+      // Round to get the discrete step direction
+      const stepX = Math.round(moveX);
+      const stepY = Math.round(moveY);
+      const stepZ = Math.round(moveZ);
+
+      const newX = cam.pos[0] + stepX;
+      const newY = cam.pos[1] + stepY;
+      const newZ = cam.pos[2] + stepZ;
+
+      // Check collision before moving
+      if (!wouldCollide(newX, newY, newZ)) {
+        cam.pos[0] = newX;
+        cam.pos[1] = newY;
+        cam.pos[2] = newZ;
+        lastMoveTime = currentTime;
       }
     }
-    return false;
   }
-  // Axis-separated resolution: X then Z
-  let tryX = cam.pos[0] + cam.vel[0]*dt;
-  feetY = cam.pos[1] - eyeToFeet;
-  if (!aabbBlocked(tryX, feetY, cam.pos[2])){
-    cam.pos[0] = tryX;
-  } else {
-    // Step-up assist: only when on ground, to avoid mid-air step boosting
-    let stepped = false;
-    if (cam.onGround){
-      for (let s=0.25; s<=MAX_STEP_UP; s+=0.25){
-        if (!aabbBlocked(tryX, feetY + s, cam.pos[2])){
-          cam.pos[0] = tryX; cam.pos[1] += s; feetY = cam.pos[1] - eyeToFeet; stepped = true; break;
+
+  // Walk mode: Apply gravity (continuous for falling)
+  if (cam.walk) {
+    const meterPerBlock = BLOCK_SIZE_M;
+    const gravity = -9.8 / meterPerBlock; // blocks/s^2
+    cam.vel[1] += gravity * dt;
+
+    // Apply vertical velocity
+    let nextY = cam.pos[1] + cam.vel[1] * dt;
+    const feetY = nextY - eyeToFeet;
+
+    // Ground detection
+    function surfaceY(x, z, guess){
+      const offsets=[[0,0],[r*0.7,0],[-r*0.7,0],[0,r*0.7],[0,-r*0.7]];
+      let best=-Infinity;
+      for (let i=0;i<offsets.length;i++){
+        const ox=Math.floor(x+offsets[i][0]);
+        const oz=Math.floor(z+offsets[i][1]);
+        const y0=Math.floor(guess)+2;
+        for (let y=y0;y>=y0-6;y--){
+          const below=getVoxelWorld(ox,y-1,oz), cur=getVoxelWorld(ox,y,oz);
+          if ((below!==AIR && below!==WATER) && (cur===AIR || cur===WATER)){
+            best = y > best ? y : best;
+            break;
+          }
         }
       }
+      return best;
     }
-    if (!stepped){
-      // Step-down assist: allow moving if we can step down up to 3 blocks at destination
-      if (MAX_STEP_DOWN>0 && !aabbBlocked(tryX, feetY - MAX_STEP_DOWN, cam.pos[2])){
-        cam.pos[0] = tryX; cam.pos[1] -= MAX_STEP_DOWN; feetY = cam.pos[1] - eyeToFeet;
-      } else {
-        cam.vel[0] = 0;
-      }
+
+    const surf = surfaceY(cam.pos[0], cam.pos[2], feetY);
+    const gap = feetY - surf;
+    if (surf>-Infinity && gap<0.25 && cam.vel[1]<=0){
+      cam.onGround=true;
+      cam.vel[1]=0;
+      cam.pos[1]=surf + eyeToFeet + 1e-4;
+    } else {
+      cam.onGround = false;
+      cam.pos[1] = nextY;
     }
-  }
-  let tryZ = cam.pos[2] + cam.vel[2]*dt;
-  if (!aabbBlocked(cam.pos[0], feetY, tryZ)){
-    cam.pos[2] = tryZ;
-  } else {
-    // Step-up assist on Z axis (grounded only)
-    let stepped = false;
-    if (cam.onGround){
-      for (let s=0.25; s<=MAX_STEP_UP; s+=0.25){
-        if (!aabbBlocked(cam.pos[0], feetY + s, tryZ)){
-          cam.pos[2] = tryZ; cam.pos[1] += s; feetY = cam.pos[1] - eyeToFeet; stepped = true; break;
-        }
-      }
+
+    // Jump handling
+    if (key[' '] && cam.onGround && canMove) {
+      const desiredJumpMeters = 1.2;
+      const jumpVel = Math.sqrt(Math.max(0, 2 * (desiredJumpMeters/BLOCK_SIZE_M) * (-gravity)));
+      cam.vel[1] = jumpVel;
+      cam.onGround = false;
+      lastMoveTime = currentTime;
     }
-    if (!stepped){
-      if (MAX_STEP_DOWN>0 && !aabbBlocked(cam.pos[0], feetY - MAX_STEP_DOWN, tryZ)){
-        cam.pos[2] = tryZ; cam.pos[1] -= MAX_STEP_DOWN; feetY = cam.pos[1] - eyeToFeet;
-      } else {
-        cam.vel[2] = 0;
-      }
-    }
-  }
-  // Prevent getting stuck inside walls when both axes blocked: nudge slightly outward
-  if (aabbBlocked(cam.pos[0], feetY, cam.pos[2])){
-    const nudge = 0.05;
-    if (!aabbBlocked(cam.pos[0]+nudge, feetY, cam.pos[2])) cam.pos[0]+=nudge;
-    else if (!aabbBlocked(cam.pos[0]-nudge, feetY, cam.pos[2])) cam.pos[0]-=nudge;
-    if (!aabbBlocked(cam.pos[0], feetY, cam.pos[2]+nudge)) cam.pos[2]+=nudge;
-    else if (!aabbBlocked(cam.pos[0], feetY, cam.pos[2]-nudge)) cam.pos[2]-=nudge;
   }
 }
 
