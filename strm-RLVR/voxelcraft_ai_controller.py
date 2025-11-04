@@ -73,7 +73,7 @@ class VoxelCraftClient:
         return self.client_id
 
     def send_position(self, name: str, color: str = "#ff0000"):
-        """Send position update to server"""
+        """Send position update to server - DISCRETE POSITIONS"""
         if not self.client_id:
             self.generate_client_id(name)
 
@@ -82,9 +82,9 @@ class VoxelCraftClient:
             "clientId": self.client_id,
             "room": self.room,
             "name": name,
-            "x": round(self.position.x, 2),
-            "y": round(self.position.y, 2),
-            "z": round(self.position.z, 2),
+            "x": int(round(self.position.x)),  # Discrete: integer coordinates only
+            "y": int(round(self.position.y)),  # Discrete: integer coordinates only
+            "z": int(round(self.position.z)),  # Discrete: integer coordinates only
             "yaw": round(self.position.yaw, 3),
             "pitch": round(self.position.pitch, 3),
             "color": color
@@ -128,10 +128,11 @@ class VoxelCraftClient:
             print(f"Error breaking block: {e}")
 
     def move(self, dx: float = 0, dy: float = 0, dz: float = 0):
-        """Move relative to current position"""
-        self.position.x += dx
-        self.position.y += dy
-        self.position.z += dz
+        """Move relative to current position - DISCRETE STEPPING"""
+        # Snap movement to integer grid positions (discrete voxel movement)
+        self.position.x = round(self.position.x + dx)
+        self.position.y = round(self.position.y + dy)
+        self.position.z = round(self.position.z + dz)
 
     def rotate(self, dyaw: float = 0, dpitch: float = 0):
         """Rotate camera"""
@@ -326,35 +327,40 @@ Choose ONE action. Start in <internal> mode to think, then optionally use <broad
         return VoxelAction.WAIT, {}
 
     def execute_action(self, action: VoxelAction, params: Dict):
-        """Execute the chosen action"""
+        """Execute the chosen action - DISCRETE STEPPING"""
         import math
 
         if action == VoxelAction.MOVE_FORWARD:
-            # Move in the direction we're facing
-            dx = -math.sin(self.voxel_client.position.yaw) * 2
-            dz = -math.cos(self.voxel_client.position.yaw) * 2
+            # Move EXACTLY 1 block in the direction we're facing (discrete step)
+            dx = round(-math.sin(self.voxel_client.position.yaw))
+            dz = round(-math.cos(self.voxel_client.position.yaw))
             self.voxel_client.move(dx=dx, dz=dz)
 
         elif action == VoxelAction.MOVE_BACKWARD:
-            dx = math.sin(self.voxel_client.position.yaw) * 2
-            dz = math.cos(self.voxel_client.position.yaw) * 2
+            # Move EXACTLY 1 block backward (discrete step)
+            dx = round(math.sin(self.voxel_client.position.yaw))
+            dz = round(math.cos(self.voxel_client.position.yaw))
             self.voxel_client.move(dx=dx, dz=dz)
 
         elif action == VoxelAction.MOVE_LEFT:
-            dx = -math.cos(self.voxel_client.position.yaw) * 2
-            dz = math.sin(self.voxel_client.position.yaw) * 2
+            # Strafe EXACTLY 1 block left (discrete step)
+            dx = round(-math.cos(self.voxel_client.position.yaw))
+            dz = round(math.sin(self.voxel_client.position.yaw))
             self.voxel_client.move(dx=dx, dz=dz)
 
         elif action == VoxelAction.MOVE_RIGHT:
-            dx = math.cos(self.voxel_client.position.yaw) * 2
-            dz = -math.sin(self.voxel_client.position.yaw) * 2
+            # Strafe EXACTLY 1 block right (discrete step)
+            dx = round(math.cos(self.voxel_client.position.yaw))
+            dz = round(-math.sin(self.voxel_client.position.yaw))
             self.voxel_client.move(dx=dx, dz=dz)
 
         elif action == VoxelAction.MOVE_UP:
-            self.voxel_client.move(dy=2)
+            # Move EXACTLY 1 block up (discrete step)
+            self.voxel_client.move(dy=1)
 
         elif action == VoxelAction.MOVE_DOWN:
-            self.voxel_client.move(dy=-2)
+            # Move EXACTLY 1 block down (discrete step)
+            self.voxel_client.move(dy=-1)
 
         elif action == VoxelAction.TURN_LEFT:
             self.voxel_client.rotate(dyaw=math.pi/4)
