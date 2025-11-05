@@ -92,7 +92,7 @@ function mat4_lookAt(eye, center, up){
 }
 
 // Camera and controls
-const cam = { pos:[0, 120, 0], rot:[-0.2, 0.6], vel:[0,0,0], walk:false, onGround:false };
+const cam = { pos:[0, 120, 0], rot:[-0.2, 0.6], vel:[0,0,0], walk:true, onGround:false };
 // Detached free camera for inspection
 const freeCam = { enabled:false, pos:[0, 123, -6], rot:[-0.2, 0.6] };
 
