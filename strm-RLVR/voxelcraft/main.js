@@ -1677,7 +1677,7 @@ function draw(){
     gl.enableVertexAttribArray(aNor);
   }
 
-  // Draw other players' hitbox wireframes
+  // Draw other players' humanoid wireframes and gaze indicators
   if (otherPlayers.size > 0) {
     gl.useProgram(linesProg);
     gl.uniformMatrix4fv(uProjL, false, lastProj);
@@ -1690,6 +1690,7 @@ function draw(){
     gl.disableVertexAttribArray(aNor);
 
     for (const [clientId, player] of otherPlayers.entries()) {
+      // Draw player body
       if (player.vbo && player.count) {
         // Use player's color for their wireframe
         const col = player.color || [1.0, 0.5, 0.0];
@@ -1698,6 +1699,16 @@ function draw(){
         gl.enableVertexAttribArray(aPosL);
         gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 3*4, 0);
         gl.drawArrays(gl.LINES, 0, player.count);
+        gl.disableVertexAttribArray(aPosL);
+      }
+
+      // Draw gaze indicator in bright cyan
+      if (player.gazeVbo && player.gazeCount) {
+        gl.uniform3f(uColorL, 0.0, 1.0, 1.0); // Bright cyan
+        gl.bindBuffer(gl.ARRAY_BUFFER, player.gazeVbo);
+        gl.enableVertexAttribArray(aPosL);
+        gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 3*4, 0);
+        gl.drawArrays(gl.LINES, 0, player.gazeCount);
         gl.disableVertexAttribArray(aPosL);
       }
     }
@@ -1943,11 +1954,9 @@ updateViewProj = function(){ _oldUpdateViewProj(); captureViewProj();
     if (highlight && highlight.vbo){ gl.deleteBuffer(highlight.vbo); }
     highlight = null;
   }
-  // Update player hitbox wireframe each frame
-  const r = PLAYER_RADIUS_BLOCKS;
-  const h = PLAYER_HEIGHT_BLOCKS;
+  // Update player hitbox wireframe each frame - now using humanoid shape
   const feetY = cam.pos[1] - PLAYER_EYE_HEIGHT_BLOCKS;
-  const linesPB = buildWireAABB(cam.pos[0]-r, feetY, cam.pos[0]+r, feetY+h, cam.pos[2]-r, cam.pos[2]+r);
+  const linesPB = buildHumanoidPlayer(cam.pos[0], cam.pos[1], cam.pos[2], feetY);
   if (!playerBox) playerBox = {};
   if (playerBox.vbo) gl.deleteBuffer(playerBox.vbo);
   playerBox.vbo = gl.createBuffer();
@@ -1989,30 +1998,162 @@ function buildWireAABB(minX, minY, maxX, maxY, minZ, maxZ){
   return out;
 }
 
+// Build a humanoid player shape with head, body, arms, and legs
+function buildHumanoidPlayer(x, y, z, feetY) {
+  const lines = [];
+
+  // Dimensions (in blocks)
+  const bodyWidth = 0.8;
+  const bodyDepth = 0.5;
+  const bodyHeight = 2.5;
+  const headSize = 0.7;
+  const armWidth = 0.3;
+  const armLength = 2.0;
+  const legWidth = 0.35;
+  const legLength = 2.4;
+
+  // Head (centered at top)
+  const headY = feetY + bodyHeight + legLength;
+  const headHalf = headSize / 2;
+  lines.push(...buildWireAABB(
+    x - headHalf, headY,
+    x + headHalf, headY + headSize,
+    z - headHalf, z + headHalf
+  ));
+
+  // Body (torso)
+  const bodyY = feetY + legLength;
+  const bodyHalfW = bodyWidth / 2;
+  const bodyHalfD = bodyDepth / 2;
+  lines.push(...buildWireAABB(
+    x - bodyHalfW, bodyY,
+    x + bodyHalfW, bodyY + bodyHeight,
+    z - bodyHalfD, z + bodyHalfD
+  ));
+
+  // Left arm
+  const armY = feetY + legLength + bodyHeight - 0.3;
+  const leftArmX = x - bodyHalfW - armWidth / 2;
+  lines.push(...buildWireAABB(
+    leftArmX - armWidth / 2, armY - armLength,
+    leftArmX + armWidth / 2, armY,
+    z - armWidth / 2, z + armWidth / 2
+  ));
+
+  // Right arm
+  const rightArmX = x + bodyHalfW + armWidth / 2;
+  lines.push(...buildWireAABB(
+    rightArmX - armWidth / 2, armY - armLength,
+    rightArmX + armWidth / 2, armY,
+    z - armWidth / 2, z + armWidth / 2
+  ));
+
+  // Left leg
+  const leftLegX = x - bodyWidth / 4;
+  lines.push(...buildWireAABB(
+    leftLegX - legWidth / 2, feetY,
+    leftLegX + legWidth / 2, feetY + legLength,
+    z - legWidth / 2, z + legWidth / 2
+  ));
+
+  // Right leg
+  const rightLegX = x + bodyWidth / 4;
+  lines.push(...buildWireAABB(
+    rightLegX - legWidth / 2, feetY,
+    rightLegX + legWidth / 2, feetY + legLength,
+    z - legWidth / 2, z + legWidth / 2
+  ));
+
+  return lines;
+}
+
+// Build a gaze indicator line showing where the player is looking
+function buildGazeIndicator(x, y, z, yaw, pitch) {
+  const lines = [];
+
+  // Convert angles to radians
+  const yawRad = yaw * Math.PI / 180;
+  const pitchRad = pitch * Math.PI / 180;
+
+  // Calculate direction vector from yaw and pitch
+  // In voxelcraft, yaw=0 points along +X, and rotates counterclockwise (towards -Z)
+  const dirX = Math.cos(pitchRad) * Math.cos(yawRad);
+  const dirY = -Math.sin(pitchRad); // Negative because pitch is inverted
+  const dirZ = Math.cos(pitchRad) * Math.sin(yawRad);
+
+  // Gaze line length
+  const gazeLength = 3.0;
+
+  // Start from eye position (y is already at eye height)
+  const startX = x;
+  const startY = y;
+  const startZ = z;
+
+  // End point
+  const endX = startX + dirX * gazeLength;
+  const endY = startY + dirY * gazeLength;
+  const endZ = startZ + dirZ * gazeLength;
+
+  // Add the line
+  lines.push(startX, startY, startZ, endX, endY, endZ);
+
+  // Add an arrow tip (simple cross at the end)
+  const tipSize = 0.3;
+  const rightX = -dirZ * tipSize; // Perpendicular to direction
+  const rightZ = dirX * tipSize;
+  const upX = -dirY * dirX * tipSize;
+  const upY = (dirX * dirX + dirZ * dirZ) * tipSize;
+  const upZ = -dirY * dirZ * tipSize;
+
+  // Cross lines for arrow tip
+  lines.push(
+    endX - rightX, endY, endZ - rightZ,
+    endX + rightX, endY, endZ + rightZ
+  );
+  lines.push(
+    endX - upX, endY - upY, endZ - upZ,
+    endX + upX, endY + upY, endZ + upZ
+  );
+
+  return lines;
+}
+
 // Update wireframe buffers for other players
 function updateOtherPlayersWireframes() {
-  const r = PLAYER_RADIUS_BLOCKS;
-  const h = PLAYER_HEIGHT_BLOCKS;
   for (const [clientId, player] of otherPlayers.entries()) {
     if (player.x !== undefined && player.y !== undefined && player.z !== undefined) {
       // Calculate feet position (player.y is eye height)
       const feetY = player.y - PLAYER_EYE_HEIGHT_BLOCKS;
-      const lines = buildWireAABB(
-        player.x - r, feetY,
-        player.x + r, feetY + h,
-        player.z - r, player.z + r
-      );
+
+      // Build humanoid player shape
+      const playerLines = buildHumanoidPlayer(player.x, player.y, player.z, feetY);
 
       // Delete old buffer if it exists
       if (player.vbo) {
         gl.deleteBuffer(player.vbo);
       }
 
-      // Create new buffer
+      // Create new buffer for player body
       player.vbo = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, player.vbo);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lines), gl.DYNAMIC_DRAW);
-      player.count = lines.length / 3;
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(playerLines), gl.DYNAMIC_DRAW);
+      player.count = playerLines.length / 3;
+
+      // Build gaze indicator if we have orientation data
+      if (player.yaw !== undefined && player.pitch !== undefined) {
+        const gazeLines = buildGazeIndicator(player.x, player.y, player.z, player.yaw, player.pitch);
+
+        // Delete old gaze buffer if it exists
+        if (player.gazeVbo) {
+          gl.deleteBuffer(player.gazeVbo);
+        }
+
+        // Create new buffer for gaze indicator
+        player.gazeVbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, player.gazeVbo);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(gazeLines), gl.DYNAMIC_DRAW);
+        player.gazeCount = gazeLines.length / 3;
+      }
     }
   }
 }
