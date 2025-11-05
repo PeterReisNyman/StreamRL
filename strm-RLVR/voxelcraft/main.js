@@ -1294,6 +1294,48 @@ function move(dt){
         cam.pos[1] = newY;
         cam.pos[2] = newZ;
         lastMoveTime = currentTime;
+      } else if ((stepX !== 0 || stepZ !== 0) && stepY === 0 && cam.walk) {
+        // STEP-UP LOGIC: If horizontal movement is blocked in walk mode, try stepping up
+        // This allows players to automatically climb 1-block obstacles
+        let stepped = false;
+        for (let stepUp = 1; stepUp <= MAX_STEP_UP && !stepped; stepUp++) {
+          const elevatedY = cam.pos[1] + stepUp;
+
+          // Check if we can move to the elevated position
+          if (!wouldCollide(newX, elevatedY, newZ)) {
+            // Verify there's a solid block to stand on at the new position
+            const feetY = elevatedY - eyeToFeet;
+            const blockBelowY = Math.floor(feetY - 0.1);
+
+            // Check if there's solid ground at multiple points under the player
+            let hasGround = false;
+            const checkPoints = [
+              [newX, blockBelowY, newZ],
+              [newX + r * 0.7, blockBelowY, newZ],
+              [newX - r * 0.7, blockBelowY, newZ],
+              [newX, blockBelowY, newZ + r * 0.7],
+              [newX, blockBelowY, newZ - r * 0.7]
+            ];
+
+            for (let i = 0; i < checkPoints.length; i++) {
+              const [px, py, pz] = checkPoints[i];
+              const blockId = getVoxelWorld(Math.floor(px), py, Math.floor(pz));
+              if (blockId !== AIR && blockId !== WATER) {
+                hasGround = true;
+                break;
+              }
+            }
+
+            if (hasGround) {
+              // Successfully step up!
+              cam.pos[0] = newX;
+              cam.pos[1] = elevatedY;
+              cam.pos[2] = newZ;
+              lastMoveTime = currentTime;
+              stepped = true;
+            }
+          }
+        }
       }
     }
   }
