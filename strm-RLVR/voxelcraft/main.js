@@ -107,6 +107,188 @@ const PLAYER_EYE_HEIGHT_BLOCKS = PLAYER_HEIGHT_BLOCKS - 0.1; // keep ~0.1 block 
 const INTERACT_REACH_BLOCKS = 16;          // block interaction raycast distance
 // Make the player wider so they cannot fit through a 2-wide hole (need ~3-wide)
 const PLAYER_RADIUS_BLOCKS = 1.1;          // collision radius in blocks (~2.2 wide)
+
+// ========== MULTIPLAYER SUPPORT ==========
+// Parse URL parameters for room and player name
+const urlParams = new URLSearchParams(window.location.search);
+const multiplayerRoom = urlParams.get('room') || 'default';
+const playerName = urlParams.get('name') || `Player_${Math.floor(Math.random()*1000)}`;
+const clientId = `client_${Date.now()}_${Math.floor(Math.random()*100000)}`;
+
+// Generate random color for this player
+function randomPlayerColor() {
+  const hue = Math.random() * 360;
+  const s = 0.7 + Math.random() * 0.3;
+  const l = 0.5 + Math.random() * 0.2;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + hue / 30) % 12;
+    return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+  };
+  return [f(0), f(8), f(4)];
+}
+const playerColor = randomPlayerColor();
+
+// Store other players: clientId -> {x, y, z, yaw, pitch, name, color, lastUpdate, vbo, count}
+const otherPlayers = new Map();
+
+// Send position update to server
+async function sendPosition() {
+  try {
+    const payload = {
+      type: 'pos',
+      room: multiplayerRoom,
+      clientId: clientId,
+      x: cam.pos[0],
+      y: cam.pos[1],
+      z: cam.pos[2],
+      yaw: cam.rot[1],
+      pitch: cam.rot[0],
+      name: playerName,
+      color: playerColor
+    };
+    await fetch('./publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    console.warn('Failed to send position:', err);
+  }
+}
+
+// Subscribe to server events for other players
+let sseConnection = null;
+function connectMultiplayer() {
+  try {
+    sseConnection = new EventSource(`./events?room=${encodeURIComponent(multiplayerRoom)}`);
+
+    sseConnection.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'pos' && data.clientId && data.clientId !== clientId) {
+          // Update other player's position
+          const isNewPlayer = !otherPlayers.has(data.clientId);
+          const player = otherPlayers.get(data.clientId) || {};
+          player.x = data.x;
+          player.y = data.y;
+          player.z = data.z;
+          player.yaw = data.yaw || 0;
+          player.pitch = data.pitch || 0;
+          player.name = data.name || 'Unknown';
+          player.color = data.color || [1, 1, 1];
+          player.lastUpdate = Date.now();
+          otherPlayers.set(data.clientId, player);
+
+          // Update UI when new player joins
+          if (isNewPlayer) {
+            updatePlayersUI();
+          }
+        } else if (data.type === 'leave' && data.clientId) {
+          // Remove player who left
+          const player = otherPlayers.get(data.clientId);
+          if (player && player.vbo) {
+            gl.deleteBuffer(player.vbo);
+          }
+          otherPlayers.delete(data.clientId);
+          updatePlayersUI();
+        }
+      } catch (err) {
+        console.warn('Failed to parse SSE message:', err);
+      }
+    };
+
+    sseConnection.onerror = (err) => {
+      console.warn('SSE connection error:', err);
+      // Reconnect after delay
+      setTimeout(() => {
+        if (sseConnection) {
+          sseConnection.close();
+          connectMultiplayer();
+        }
+      }, 5000);
+    };
+  } catch (err) {
+    console.warn('Failed to connect multiplayer:', err);
+  }
+}
+
+// Send leave notification when page unloads
+window.addEventListener('beforeunload', () => {
+  try {
+    const payload = {
+      type: 'leave',
+      room: multiplayerRoom,
+      clientId: clientId
+    };
+    navigator.sendBeacon('./publish', JSON.stringify(payload));
+  } catch (err) {
+    console.warn('Failed to send leave notification:', err);
+  }
+});
+
+// Clean up stale players (haven't updated in 10 seconds)
+function cleanupStalePlayers() {
+  const now = Date.now();
+  const timeout = 10000; // 10 seconds
+  for (const [id, player] of otherPlayers.entries()) {
+    if (now - player.lastUpdate > timeout) {
+      if (player.vbo) {
+        gl.deleteBuffer(player.vbo);
+      }
+      otherPlayers.delete(id);
+    }
+  }
+  updatePlayersUI();
+}
+
+// Update the players list UI
+function updatePlayersUI() {
+  const listEl = document.getElementById('playersList');
+  if (!listEl) return;
+
+  const players = [
+    { name: `${playerName} (you)`, color: playerColor, isLocal: true }
+  ];
+
+  for (const [id, player] of otherPlayers.entries()) {
+    players.push({
+      name: player.name || 'Unknown',
+      color: player.color || [1, 1, 1],
+      isLocal: false
+    });
+  }
+
+  listEl.innerHTML = players.map(p => {
+    const r = Math.round(p.color[0] * 255);
+    const g = Math.round(p.color[1] * 255);
+    const b = Math.round(p.color[2] * 255);
+    const colorStyle = `rgb(${r},${g},${b})`;
+    return `<div style="padding:3px 0; display:flex; align-items:center; gap:6px;">
+      <div style="width:12px; height:12px; border-radius:2px; background:${colorStyle}; border:1px solid rgba(255,255,255,0.3);"></div>
+      <span>${p.name}</span>
+    </div>`;
+  }).join('');
+}
+
+// Start multiplayer connection
+connectMultiplayer();
+
+// Send initial position
+sendPosition();
+
+// Send position updates periodically (every 200ms)
+setInterval(sendPosition, 200);
+
+// Clean up stale players every 5 seconds
+setInterval(cleanupStalePlayers, 5000);
+
+// Initial UI update
+updatePlayersUI();
+
+console.log(`Multiplayer initialized: room="${multiplayerRoom}", name="${playerName}", clientId="${clientId}"`);
+// ========== END MULTIPLAYER SUPPORT ==========
 // Auto step limits (in blocks). We clamp stepping to ground-only to avoid mid-air boosts.
 // Keep auto-step conservative to reduce oscillation and prevent unintended boosts
 const MAX_STEP_UP = 1.0;
@@ -1453,6 +1635,37 @@ function draw(){
     gl.enableVertexAttribArray(aNor);
   }
 
+  // Draw other players' hitbox wireframes
+  if (otherPlayers.size > 0) {
+    gl.useProgram(linesProg);
+    gl.uniformMatrix4fv(uProjL, false, lastProj);
+    gl.uniformMatrix4fv(uViewL, false, lastView);
+    gl.uniform3f(uFogColL, currentSky[0], currentSky[1], currentSky[2]);
+    gl.uniform1f(uFogNearL, fogDistance*0.35);
+    gl.uniform1f(uFogFarL, fogDistance);
+    gl.disableVertexAttribArray(aPos);
+    gl.disableVertexAttribArray(aCol);
+    gl.disableVertexAttribArray(aNor);
+
+    for (const [clientId, player] of otherPlayers.entries()) {
+      if (player.vbo && player.count) {
+        // Use player's color for their wireframe
+        const col = player.color || [1.0, 0.5, 0.0];
+        gl.uniform3f(uColorL, col[0], col[1], col[2]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, player.vbo);
+        gl.enableVertexAttribArray(aPosL);
+        gl.vertexAttribPointer(aPosL, 3, gl.FLOAT, false, 3*4, 0);
+        gl.drawArrays(gl.LINES, 0, player.count);
+        gl.disableVertexAttribArray(aPosL);
+      }
+    }
+
+    gl.useProgram(prog);
+    gl.enableVertexAttribArray(aPos);
+    gl.enableVertexAttribArray(aCol);
+    gl.enableVertexAttribArray(aNor);
+  }
+
   // Far horizon pass: render simplified distant terrain as a height fog dome
   if (farLOD.enabled){
     gl.useProgram(prog);
@@ -1647,7 +1860,7 @@ function loop(t){
   const hour = (tod/(2*Math.PI))*24; // rough mapping
   const h = Math.floor(hour), m = Math.floor((hour-h)*60);
   if (dbg) {
-    dbg.textContent = `pos ${cam.pos.map(v=>v.toFixed(1)).join(', ')} chunks ${chunks.size} fog ${fogDistance} sel ${blockNames[selectedBlock]}  fps ${fpsCounter.fps.toFixed(0)}  time ${(''+h).padStart(2,'0')}:${(''+m).padStart(2,'0')} x${timeSpeed}${timePaused?' (paused)':''}${cam.walk?' WALK':' FLY'}`;
+    dbg.textContent = `pos ${cam.pos.map(v=>v.toFixed(1)).join(', ')} chunks ${chunks.size} fog ${fogDistance} sel ${blockNames[selectedBlock]}  fps ${fpsCounter.fps.toFixed(0)}  time ${(''+h).padStart(2,'0')}:${(''+m).padStart(2,'0')} x${timeSpeed}${timePaused?' (paused)':''}${cam.walk?' WALK':' FLY'}  players ${otherPlayers.size+1}`;
   }
   // Update hotbar UI
   updateHotbar(selectedBlock);
@@ -1699,6 +1912,9 @@ updateViewProj = function(){ _oldUpdateViewProj(); captureViewProj();
   gl.bindBuffer(gl.ARRAY_BUFFER, playerBox.vbo);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(linesPB), gl.DYNAMIC_DRAW);
   playerBox.count = linesPB.length/3;
+
+  // Update other players' hitbox wireframes
+  updateOtherPlayersWireframes();
 };
 
 function buildWireCube(x,y,z){
@@ -1729,6 +1945,34 @@ function buildWireAABB(minX, minY, maxX, maxY, minZ, maxZ){
   const out = [];
   for (const [a,b] of E){ out.push(...p[a], ...p[b]); }
   return out;
+}
+
+// Update wireframe buffers for other players
+function updateOtherPlayersWireframes() {
+  const r = PLAYER_RADIUS_BLOCKS;
+  const h = PLAYER_HEIGHT_BLOCKS;
+  for (const [clientId, player] of otherPlayers.entries()) {
+    if (player.x !== undefined && player.y !== undefined && player.z !== undefined) {
+      // Calculate feet position (player.y is eye height)
+      const feetY = player.y - PLAYER_EYE_HEIGHT_BLOCKS;
+      const lines = buildWireAABB(
+        player.x - r, feetY,
+        player.x + r, feetY + h,
+        player.z - r, player.z + r
+      );
+
+      // Delete old buffer if it exists
+      if (player.vbo) {
+        gl.deleteBuffer(player.vbo);
+      }
+
+      // Create new buffer
+      player.vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, player.vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lines), gl.DYNAMIC_DRAW);
+      player.count = lines.length / 3;
+    }
+  }
 }
 
 // Simple FPS counter with exponential smoothing
