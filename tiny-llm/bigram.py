@@ -1,123 +1,188 @@
-import torch
-import torch.nn as nn
-from torch.nn import functional as F
+import torch 
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+import torch.nn.functional as F
 
-# hyperparameters
-batch_size = 32 # how many independent sequences will we process in parallel?
-block_size = 8 # what is the maximum context length for predictions?
-max_iters = 3000
-eval_interval = 300
-learning_rate = 1e-2
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-eval_iters = 200
-# ------------
+import os
+os.system('clear')
+os.system('clear')
 
-torch.manual_seed(1337)
+# https://docs.pytorch.org/docs/stable/generated/torch.multinomial.html
 
-# wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
-with open('/Users/peternyman/Documents/GitHub/StreamRL/tiny-llm/input.txt', 'r', encoding='utf-8') as f:
-    text = f.read()
+words = open('/Users/peternyman/Documents/GitHub/StreamRL/tiny-llm/names.txt', 'r', encoding='utf-8').read().splitlines()
 
-# here are all the unique characters that occur in this text
-chars = sorted(list(set(text)))
-vocab_size = len(chars)
-# create a mapping from characters to integers
-stoi = { ch:i for i,ch in enumerate(chars) }
-itos = { i:ch for i,ch in enumerate(chars) }
-encode = lambda s: [stoi[c] for c in s] # encoder: take a string, output a list of integers
-decode = lambda l: ''.join([itos[i] for i in l]) # decoder: take a list of integers, output a string
+# Build vocabulary and mappings
+chars = sorted(list(set(''.join(words))))
+chars.insert(0,'.')
+# string -> index
+stoi = {s: i for i, s in enumerate(chars)}
+# index -> string
+itos = {i: s for i, s in enumerate(chars)}
+# Bigram count matrix sized by vocab
+# N = torch.zeros(len(chars), len(chars), dtype=torch.int64)
 
-# Train and test splits
-data = torch.tensor(encode(text), dtype=torch.long)
-n = int(0.9*len(data)) # first 90% will be train, rest val
-train_data = data[:n]
-val_data = data[n:]
+"Create the Traning set"
+xs = []
+ys = []
 
-# data loading
-def get_batch(split):
-    # generate a small batch of data of inputs x and targets y
-    data = train_data if split == 'train' else val_data
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i:i+block_size] for i in ix])
-    y = torch.stack([data[i+1:i+block_size+1] for i in ix])
-    x, y = x.to(device), y.to(device)
-    return x, y
+for w in words:
+    chs = ['.'] + list(w) + ['.']
+    for i in range(1,len(chs)):
+        ch1 = chs[i-1]
+        ch2 = chs[i]
+        ix1 = stoi[ch1]
+        ix2 = stoi[ch2]
 
-@torch.no_grad()
-def estimate_loss():
-    out = {}
-    model.eval()
-    for split in ['train', 'val']:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(split)
-            logits, loss = model(X, Y)
-            losses[k] = loss.item()
-        out[split] = losses.mean()
-    model.train()
-    return out
+        xs.append(ix1)
+        ys.append(ix2)
 
-# super simple bigram model
-class BigramLanguageModel(nn.Module):
+xs = torch.tensor(xs)
+num = xs.nelement()
+ys = torch.tensor(ys)
 
-    def __init__(self, vocab_size):
-        super().__init__()
-        # each token directly reads off the logits for the next token from a lookup table
-        self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
+xenc = F.one_hot(xs,num_classes=27).float()
 
-    def forward(self, idx, targets=None):
 
-        # idx and targets are both (B,T) tensor of integers
-        logits = self.token_embedding_table(idx) # (B,T,C)
 
-        if targets is None:
-            loss = None
-        else:
-            B, T, C = logits.shape
-            logits = logits.view(B*T, C)
-            targets = targets.view(B*T)
-            loss = F.cross_entropy(logits, targets)
+W = torch.randn((27,27), requires_grad=True)
+W.shape
 
-        return logits, loss
+"Traning"
+for k in range(200):
 
-    def generate(self, idx, max_new_tokens):
-        # idx is (B, T) array of indices in the current context
-        for _ in range(max_new_tokens):
-            # get the predictions
-            logits, loss = self(idx)
-            # focus only on the last time step
-            logits = logits[:, -1, :] # becomes (B, C)
-            # apply softmax to get probabilities
-            probs = F.softmax(logits, dim=-1) # (B, C)
-            # sample from the distribution
-            idx_next = torch.multinomial(probs, num_samples=1) # (B, 1)
-            # append sampled index to the running sequence
-            idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
-        return idx
+    # And all of these are differentiable operations. So what we've done now is we are taking inputs, 
+    # we have differentiable operations that we can backpropagate through, 
+    # and we're getting out probability distributions.
 
-model = BigramLanguageModel(vocab_size)
-m = model.to(device)
 
-# create a PyTorch optimizer
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    # forward pass
+    logits = xenc @ W #log-counts
+    # soft-max beging
+    counts = logits.exp() # equivalent to N
+    probs = counts / counts.sum(1, keepdim=True)
+    # soft-max end
+    # loss = -probs[torch.arange(num), ys].log().mean() + 0.01*(W**2).mean() # this is called regularazation which equals to P = (N+1).float() 
+    loss = -probs[torch.arange(num), ys].log().mean() # Here we compare it with the YS
+    print(loss.item())
 
-for iter in range(max_iters):
-
-    # every once in a while evaluate the loss on train and val sets
-    if iter % eval_interval == 0:
-        losses = estimate_loss()
-        print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-
-        # generate from the model
-        context = torch.zeros((1, 1), dtype=torch.long, device=device)
-        print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
-    # sample a batch of data
-    xb, yb = get_batch('train')
-
-    # evaluate the loss
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad(set_to_none=True)
+    # backward pass
+    W.grad = None
     loss.backward()
-    optimizer.step()
+    W.data += -50 * W.grad 
 
 
+
+
+
+"Xai"
+if False:
+    print(f'x encoded is of shape {xenc.shape} # the input made into a one hot vector')
+    print(f'Wheigts is of shape {W.shape}')
+    print(f'logits is of shape {logits.shape}')
+    print(f'counts is of shape {counts.shape}')
+    print(f'probs is of shape {probs.shape}')
+    print(f' W gives loss: {loss}')
+
+# e.g
+for let in range(0):
+    print()
+    [print(f'input: {chars[i]}') for i in range(len(xenc[let])) if xenc[let][i].item() == 1]
+    print(f'Answer: {chars[ys[let]]}')
+    pred_ix = probs[let].argmax().item()
+    print(f'predicts: {chars[pred_ix]}')
+    [print(f'|{char}| xenc:{xenc[let][i]:.0f}, probs:{probs[let][i]:.4f} ') for i, char in enumerate(chars)]
+
+
+
+
+"Generating"
+def gen(xs):
+    xs = torch.tensor(xs)
+
+    xenc = F.one_hot(xs,num_classes=27).float()
+
+    # forward pass
+    logits = xenc @ W #log-counts
+    # soft-max beging
+    counts = logits.exp() # equivalent to N
+    probs = counts / counts.sum(1, keepdim=True)
+    # soft-max end
+    return torch.multinomial(probs[-1], num_samples=1).item()
+
+
+for _ in range(10):
+    out = [0]
+    while True:
+        res = gen(out)
+        out.append(res)
+        
+        if res == 0:
+            break
+    print("".join([chars[pred_ix] for pred_ix in out]))
+
+
+"OLD Traning"
+# for w in words:
+#     chs = ['.'] + list(w) + ['.']
+#     for i in range(1,len(chs)):
+#         ch1 = chs[i-1]
+#         ch2 = chs[i]
+#         ix1 = stoi[ch1]
+#         ix2 = stoi[ch2]
+
+#         N[ix1,ix2] += 1
+
+# # P = (N+1).float() # this is called model smoothing 
+# P = (N).float()
+# P = P / P.sum(1, keepdim=True)
+
+
+
+"OLD Generating"
+# g = torch.Generator().manual_seed(9527148)
+
+# for _ in range(10):
+#     ix = 0
+
+#     out = []
+#     while True:
+#         p = P[ix]
+#         # p = N[ix].float()
+#         # p = p / p.sum()
+#         ix = torch.multinomial(p, num_samples=1, replacement=True, generator=g).item()
+#         out.append(itos[ix])
+#         if ix == 0:
+#             break
+#     print("".join(out[:-1]))
+
+
+
+"Testing"
+# likelihood
+# log likelihood https://www.desmos.com/calculator (y = ln(x))
+# loss function --> lower is better i.e negative log likelihood
+# negative log likelihood
+
+# log_likelihood = 0
+# n = 0
+# for w in words:
+#     chs = ['.'] + list(w) + ['.']
+#     for i in range(1,len(chs)):
+#         ch1 = chs[i-1]
+#         ch2 = chs[i]
+
+#         ix1 = stoi[ch1]
+#         ix2 = stoi[ch2]
+
+#         prob = P[ix1,ix2]
+
+#         log_prob = torch.log(prob)
+
+#         log_likelihood += log_prob
+#         n += 1
+#         print(f'{ch1}{ch2} {prob:.4f}')
+
+# nll = -log_likelihood
+# print(f'{nll=}')
+# print(f'{nll/n}')
