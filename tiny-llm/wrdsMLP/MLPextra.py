@@ -15,33 +15,18 @@ import os
 os.system('clear')
 os.system('clear')
 
-TOTAL_DIM = 30
-MAXWCHARS = 100
-INTER_LAYER = 500
+interwrds = ' \n".,?!:;=@-'
+trash = '€â»«˜œ™'
 
-interwrds = ' \n\'".,?!:;'
+table = {ord(c) : None for c in trash}
+
+
 def norm_text(text):
     spaces = [i for i, char in enumerate(text) if char in interwrds]
-    spaces.insert(0,0)
+    spaces.insert(0,-1)
     spaces.append(len(text))
 
-    return [text[spaces[i-1]+1:spaces[i]].lower() for i in range(1,len(spaces)) if text[spaces[i-1]+1:spaces[i]] != '']
-
-from datasets import load_dataset
-ds = load_dataset("roneneldan/TinyStories", split="train")
-print('Loaded Dataset')
-
-wrd_set = []
-for ex in islice(ds, 20000):
-    wrd_set.extend(norm_text(ex['text']))  # flatten token lists
-wrds = sorted(set(wrd_set))
-# add special tokens
-if '*' in wrds: wrds.remove('*')
-wrds.insert(0, '*')
-if '@' not in wrds:
-    wrds.insert(1, '@')
-print('Built token vocab')
-
+    return [text[spaces[i-1]+1:spaces[i]].lower().translate(table) for i in range(1,len(spaces)) if text[spaces[i-1]+1:spaces[i]] != '']
 
 # load for inference
 ckpt = torch.load("mlp_ckpt.pt", map_location="cpu")
@@ -51,29 +36,26 @@ b1 = ckpt["b1"].clone().requires_grad_(False)
 W2 = ckpt["W2"].clone().requires_grad_(False)
 b2 = ckpt["b2"].clone().requires_grad_(False)  # set True if resuming training
 wtoi, itow = ckpt["wtoi"], ckpt["itow"]
-TOTAL_DIM, MAXWCHARS, INTER_LAYER = ckpt["TOTAL_DIM"], ckpt["MAXWCHARS"], ckpt["INTER_LAYER"]
-
+wrds = ckpt["wrds"]
+TOTAL_DIM, MAXWRDS, INTER_LAYER = ckpt["TOTAL_DIM"], ckpt["MAXWRDS"], ckpt["INTER_LAYER"]
 
 parameters = [C,W1,b1,W2,b2]
 
-# map unknown tokens to '*'
-def _tok_index(tok: str) -> int:
-    return wtoi[tok] if tok in wtoi else wtoi['*']
 
 "Generating"
 
-out = ['@']
+out = ['<BOS>']
 
 for i in range(100):
 
-    if i < MAXWCHARS:
-        inp = ['*']*(MAXWCHARS-i) + out[:i]
+    if i < MAXWRDS:
+        inp = ['<PAD>']*(MAXWRDS-i) + out[:i]
     else:
-        inp = out[i-MAXWCHARS:i]
+        inp = out[i-MAXWRDS:i]
 
     print(f"|{' '.join(inp)}|")
     X = []
-    X.append([_tok_index(t) for t in inp])
+    X.append([wtoi.get(t, wtoi['<PAD>']) for t in inp])
     X = torch.tensor(X, dtype=torch.long)
 
     # forward pass
@@ -95,8 +77,9 @@ for i in range(100):
     # sample from last row of probs
     assert torch.isfinite(probs).all() and (probs.min() >= 0), "Invalid probabilities encountered"
     res = torch.multinomial(probs[-1], num_samples=1, replacement=True).item()
+    
 
     out.append(wrds[res])
     
-    if res == 0:
-        break
+    # if wrds[res] == '<EOS>':
+    #     break

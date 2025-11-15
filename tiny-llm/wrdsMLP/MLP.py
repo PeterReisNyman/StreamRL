@@ -21,30 +21,39 @@ device = ('cuda' if torch.cuda.is_available()
 print(f'Using device: {device}')    
 
 TOTAL_DIM = 30
-MAXWCHARS = 100
-INTER_LAYER = 500
+MAXWRDS = 100
+INTER_LAYER = 1000
+N = 120000
 
-interwrds = ' \n\'".,?!:;'
+interwrds = ' \n".,?!:;=@-'
+trash = '€â»«˜œ™'
+
+table = {ord(c) : None for c in trash}
+
+
 def norm_text(text):
     spaces = [i for i, char in enumerate(text) if char in interwrds]
-    spaces.insert(0,0)
+    spaces.insert(0,-1)
     spaces.append(len(text))
 
-    return [text[spaces[i-1]+1:spaces[i]].lower() for i in range(1,len(spaces)) if text[spaces[i-1]+1:spaces[i]] != '']
+    return [text[spaces[i-1]+1:spaces[i]].lower().translate(table) for i in range(1,len(spaces)) if text[spaces[i-1]+1:spaces[i]] != '']
 
 from datasets import load_dataset
-ds = load_dataset("roneneldan/TinyStories", split="train")
+# ds = load_dataset("roneneldan/TinyStories", split="train")
+ds = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train")
 print('Loaded Dataset')
 
 wrd_set = []
-for ex in islice(ds, 20000):
+for ex in islice(ds, N):
     wrd_set.extend(norm_text(ex['text']))  # flatten token lists
 wrds = sorted(set(wrd_set))
-# add special tokens
-if '*' in wrds: wrds.remove('*')
-wrds.insert(0, '*')
-if '@' not in wrds:
-    wrds.insert(1, '@')
+# Ensure special tokens and keep them distinct
+for tok in ['<PAD>', '<BOS>', '<EOS>']:
+    if tok in wrds:
+        wrds.remove(tok)
+wrds.insert(0, '<PAD>')
+wrds.insert(1, '<BOS>')
+wrds.insert(2, '<EOS>')
 print('Built token vocab')
 
 
@@ -53,8 +62,9 @@ print('Built token vocab')
 wtoi = {w: i for i, w in enumerate(wrds)}
 itow = {i: w for i, w in enumerate(wrds)}
 
+
 C = torch.randn((len(wrds),TOTAL_DIM)).to(device)
-W1 = torch.randn((MAXWCHARS*TOTAL_DIM,INTER_LAYER)).to(device)
+W1 = torch.randn((MAXWRDS*TOTAL_DIM,INTER_LAYER)).to(device)
 b1 = torch.randn((1,INTER_LAYER)).to(device)
 W2 = torch.randn((INTER_LAYER, len(wrds))).to(device)
 b2 = torch.randn((1, len(wrds))).to(device)
@@ -65,19 +75,36 @@ parameters = [C,W1,b1,W2,b2]
 
 "traning"
 def sample_batch(batch_size=32):
-    Xb = torch.zeros((batch_size, MAXWCHARS), dtype=torch.long).to(device)
+    Xb = torch.zeros((batch_size, MAXWRDS), dtype=torch.long).to(device)
     Yb = torch.zeros((batch_size,), dtype=torch.long).to(device)
+
+    idxs = [random.randrange(N) for _ in range(batch_size)]
+
     for i in range(batch_size):
-        ex = ds[random.randrange(len(ds[:20000]))]
-        text = ex["text"]
-        toks = ['@'] + norm_text(text) + ['@']
-        k = random.randrange(1, len(toks))
-        if k < MAXWCHARS:
-            inp = ['*']*(MAXWCHARS-k) + toks[:k]
-        else:
-            inp = toks[k-MAXWCHARS:k]
-        Xb[i] = torch.tensor([wtoi[t] for t in inp], dtype=torch.long).to(device)
-        Yb[i] = wtoi[toks[k]]
+        # resample until we get enough tokens
+        while True:
+            idx = random.randrange(N)
+            toks_core = norm_text(ds[idx]["text"])  # list of tokens
+            if len(toks_core) >= 10:
+                break
+
+        toks = ['<BOS>'] + toks_core + ['<EOS>']
+
+        # choose k with a right-tail bias, but enforce a minimum context length
+        min_k = min(len(toks) - 1, max(10, MAXWRDS // 2))
+        k = random.choices(range(min_k, len(toks)),
+                           weights=[j*j for j in range(min_k, len(toks))],
+                           k=1)[0]
+
+        start = max(0, k - MAXWRDS)
+        window = toks[start:k]
+
+        # left-pad with <PAD> to fixed length
+        if len(window) < MAXWRDS:
+            window = ['<PAD>'] * (MAXWRDS - len(window)) + window
+
+        Xb[i] = torch.tensor([wtoi.get(t, wtoi['<PAD>']) for t in window], dtype=torch.long).to(device)
+        Yb[i] = wtoi.get(toks[k], wtoi['<PAD>'])
     return Xb, Yb
 
 lre = torch.linspace(-3, 0, 10000)
@@ -89,8 +116,10 @@ lossi = []
 for p in parameters:
     p.requires_grad = True
 
-for i in range(1000):
+for i in range(3000):
     Xb, Yb = sample_batch(32)
+
+    # [print(f"-------------------\n{' '.join(itow[int(idx)] for idx in row)}") for row in Xb.detach().cpu().tolist()]
 
     # forward pass
     emb = C[Xb]
@@ -105,7 +134,7 @@ for i in range(1000):
     loss.backward()
 
     # update
-    if i > 800:
+    if i > 2500:
         lr = 0.004
     else:
         lr = 0.04
@@ -136,7 +165,8 @@ ckpt = {
     "C": C.detach(), "W1": W1.detach(), "b1": b1.detach(),
     "W2": W2.detach(), "b2": b2.detach(),
     "wtoi": wtoi, "itow": itow,
-    "TOTAL_DIM": TOTAL_DIM, "MAXWCHARS": MAXWCHARS, "INTER_LAYER": INTER_LAYER,
+    "wrds": wrds,
+    "TOTAL_DIM": TOTAL_DIM, "MAXWRDS": MAXWRDS, "INTER_LAYER": INTER_LAYER,
 }
 torch.save(ckpt, "mlp_ckpt.pt")
 

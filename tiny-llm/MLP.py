@@ -10,29 +10,29 @@ import os
 os.system('clear')
 os.system('clear')
 
-TOTAL_DIM = 30
-MAXWCHARS = 100
+TOTAL_DIM = 300
+MAXWCHARS = 300
 INTER_LAYER = 500
 
 
-# words = open('/Users/peternyman/Documents/GitHub/StreamRL/tiny-llm/names.txt', 'r', encoding='utf-8').read().splitlines()
-words = open('/Users/peternyman/Documents/GitHub/StreamRL/tiny-llm/more.txt', 'r', encoding='utf-8').read().splitlines()
+words = open('/Users/peternyman/Documents/GitHub/StreamRL/tiny-llm/traning_sets/names.txt', 'r', encoding='utf-8').read().splitlines()
+# words = open('/Users/peternyman/Documents/GitHub/StreamRL/tiny-llm/more.txt', 'r', encoding='utf-8').read().splitlines()
 
-uppwrds = [w for w in words if w.isupper()]
+# uppwrds = [w for w in words if w.isupper()]
 
-dilogs = []
-tmp = []
+# dilogs = []
+# tmp = []
 
-for w in words:
-    if w in uppwrds:
-        dilogs.append(' '.join(tmp))
-        tmp = []
-    elif w == '':
-        pass
-    else:
-        tmp.append(w)
+# for w in words:
+#     if w in uppwrds:
+#         dilogs.append(' '.join(tmp))
+#         tmp = []
+#     elif w == '':
+#         pass
+#     else:
+#         tmp.append(w)
 
-words = dilogs
+# words = dilogs
 
 # Build vocabulary and mappings
 chars = sorted(list(set(''.join(words))))
@@ -92,11 +92,8 @@ probs = counts / counts.sum(1, keepdim=True)
 L1 @ [???,len(char)]
 """
 
-
-
-
-
 "Create the Traning set"
+
 X, Y = [], []
 
 for w in words:
@@ -116,6 +113,11 @@ for w in words:
 
 X = torch.tensor(X, dtype=torch.long)
 Y = torch.tensor(Y, dtype=torch.long)
+
+split = int(len(X) * 0.8)
+
+Xtr, Xva = X[:split], X[split:]
+Ytr, Yva = Y[:split], Y[split:]
 
 # emb @ W1 + b1
 """
@@ -143,7 +145,7 @@ print(f'each batchEmb has {batchEmb.shape} word x indEmb') # torch.Size([10, 3])
 print(f'each wordEmb has{wordEmb.shape} indEmb') # hastorch.Size([3])
 """
 
-lre = torch.linspace(-3, 0, 30000)
+lre = torch.linspace(-3, -1, 30000)
 lrs = 10**lre
 
 lri = []
@@ -154,14 +156,14 @@ for p in parameters:
 
 for i in range(30000):
     # contruct minibatch
-    ix = torch.randint(0, X.shape[0], ((32,)))
+    ix = torch.randint(0, Xtr.shape[0], ((32,)))
 
     # forward pass
-    emb = C[X[ix]]
+    emb = C[Xtr[ix]]
     # print(emb.shape[0],emb.shape[1],emb.shape[2])
     h = torch.tanh(emb.view(emb.shape[0], emb.shape[1]*emb.shape[2]) @ W1 + b1)
     logits = h @ W2 + b2
-    loss = F.cross_entropy(logits, Y[ix])
+    loss = F.cross_entropy(logits, Ytr[ix])
     print(loss.item())
 
     # backward pass
@@ -171,25 +173,25 @@ for i in range(30000):
 
     # update
     if i > 20000:
-        lr = 0.01778
+        lr = 0.001
     else:
-        lr = 0.1778 
+        lr = 0.01 
 
-    # lr = lrs[i] 
+    lr = lrs[i] 
     for p in parameters:
         p.data += -lr * p.grad 
 
     # tracking learning rate
-    # lri.append(lr)
-    # lossi.append(loss.item())
+    lri.append(lr)
+    lossi.append(loss.item())
 
 
 # forward pass
-emb = C[X]
+emb = C[Xva]
 # print(emb.shape[0],emb.shape[1],emb.shape[2])
 h = torch.tanh(emb.view(emb.shape[0], emb.shape[1]*emb.shape[2]) @ W1 + b1)
 logits = h @ W2 + b2
-loss = F.cross_entropy(logits, Y)
+loss = F.cross_entropy(logits, Yva)
 print(f'Loss: {loss.item()}')
 
 
@@ -202,5 +204,5 @@ ckpt = {
 }
 torch.save(ckpt, "mlp_ckpt.pt")
 
-# plt.plot(lri,lossi)
-# plt.show()
+plt.plot(lre,lossi)
+plt.show()
