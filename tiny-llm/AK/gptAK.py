@@ -22,7 +22,7 @@ dropout = 0.2
 torch.manual_seed(1337)
 
 # wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
-with open('/Users/peternyman/Documents/GitHub/StreamRL/tiny-llm/input.txt', 'r', encoding='utf-8') as f:
+with open('/Users/peternyman/Documents/GitHub/StreamRL/tiny-llm/traning_sets/input.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 
 # here are all the unique characters that occur in this text
@@ -204,10 +204,10 @@ m = model.to(device)
 print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
 
 # create a PyTorch optimizer
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+# optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
 for iter in range(max_iters):
-
+    break
     # every once in a while evaluate the loss on train and val sets
     if iter > 0 and (iter % eval_interval == 0 or iter == max_iters - 1):
         losses = estimate_loss()
