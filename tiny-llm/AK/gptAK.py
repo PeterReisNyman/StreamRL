@@ -149,6 +149,14 @@ class GPTLanguageModel(nn.Module):
         self.ln_f = nn.LayerNorm(n_embd) # final layer norm
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
+        print(f'token_embedding_table has: {[p.nelement() for p in self.token_embedding_table.parameters()]}\n\n')
+        print(f'position_embedding_table has: {[p.nelement() for p in self.position_embedding_table.parameters()]}\n\n')
+        print(f'blocks has: {[p.nelement() for p in self.blocks.parameters()]}\n\n')
+        print(f'ln_f has: {[p.nelement() for p in self.ln_f.parameters()]}\n\n')
+        print(f'lm_head has: {[p.nelement() for p in self.lm_head.parameters()]}\n\n')
+    
+
+
         # better init, not covered in the original GPT video, but important, will cover in followup video
         self.apply(self._init_weights)
 
