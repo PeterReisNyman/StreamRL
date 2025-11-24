@@ -5,14 +5,12 @@ from torch.nn import functional as F
 # hyperparameters
 batch_size = 64 # how many independent sequences will we process in parallel?
 block_size = 256 # what is the maximum context length for predictions?
-max_iters = 3000
-eval_interval = 20
+max_iters = 5000
+eval_interval = 100
 learning_rate = 3e-4
-device = ('cuda' if torch.cuda.is_available()
-          else 'mps' if torch.backends.mps.is_available()
-          else 'cpu')
-print(f'Using device: {device}')    
-eval_iters = 5
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(device)
+eval_iters = 200
 n_embd = 384
 n_head = 6
 n_layer = 6
@@ -22,7 +20,7 @@ dropout = 0.2
 torch.manual_seed(1337)
 
 # wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
-with open('/Users/peternyman/Documents/GitHub/StreamRL/tiny-llm/traning_sets/input.txt', 'r', encoding='utf-8') as f:
+with open('input.txt', 'r', encoding='utf-8') as f:
     text = f.read()
 
 # here are all the unique characters that occur in this text
@@ -149,14 +147,6 @@ class GPTLanguageModel(nn.Module):
         self.ln_f = nn.LayerNorm(n_embd) # final layer norm
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
-        print(f'token_embedding_table has: {[p.nelement() for p in self.token_embedding_table.parameters()]}\n\n')
-        print(f'position_embedding_table has: {[p.nelement() for p in self.position_embedding_table.parameters()]}\n\n')
-        print(f'blocks has: {[p.nelement() for p in self.blocks.parameters()]}\n\n')
-        print(f'ln_f has: {[p.nelement() for p in self.ln_f.parameters()]}\n\n')
-        print(f'lm_head has: {[p.nelement() for p in self.lm_head.parameters()]}\n\n')
-    
-
-
         # better init, not covered in the original GPT video, but important, will cover in followup video
         self.apply(self._init_weights)
 
@@ -212,18 +202,18 @@ m = model.to(device)
 print(sum(p.numel() for p in m.parameters())/1e6, 'M parameters')
 
 # create a PyTorch optimizer
-# optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
+# Track training statistics
+loss_history = []
+head_size = n_embd // n_head
 
 for iter in range(max_iters):
-    break
+
     # every once in a while evaluate the loss on train and val sets
-    if iter > 0 and (iter % eval_interval == 0 or iter == max_iters - 1):
+    if iter % eval_interval == 0 or iter == max_iters - 1:
         losses = estimate_loss()
         print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-
-        # generate from the model
-        context = torch.zeros((1, 1), dtype=torch.long, device=device)
-        print(decode(m.generate(context, max_new_tokens=200)[0].tolist()))
 
     # sample a batch of data
     xb, yb = get_batch('train')
@@ -234,5 +224,38 @@ for iter in range(max_iters):
     loss.backward()
     optimizer.step()
 
+    # Track loss
+    loss_history.append(loss.item())
 
+# Save model checkpoint after training
+checkpoint = {
+    'model_state_dict': m.state_dict(),
+    'hyperparameters': {
+        'n_embd': n_embd,
+        'block_size': block_size,
+        'n_head': n_head,
+        'n_layer': n_layer,
+        'head_size': head_size,
+        'vocab_size': vocab_size,
+        'batch_size': batch_size,
+        'dropout': dropout,
+    },
+    'training_stats': {
+        'loss_history': loss_history,
+        'total_steps': max_iters,
+    },
+    'vocab': {
+        'stoi': stoi,
+        'itos': itos,
+        'chars': chars,
+    }
+}
+
+checkpoint_path = 'gptAK_checkpoint.pt'
+torch.save(checkpoint, checkpoint_path)
+print(f"Model checkpoint saved to {checkpoint_path}")
+
+# generate from the model
+context = torch.zeros((1, 1), dtype=torch.long, device=device)
+print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
 #open('more.txt', 'w').write(decode(m.generate(context, max_new_tokens=10000)[0].tolist()))

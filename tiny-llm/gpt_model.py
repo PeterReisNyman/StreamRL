@@ -6,10 +6,7 @@
 
 # del /f train.py
 
-# powershell -Command "@'
-
-
-# '@ | Set-Content -Path train.py"
+# nano train.py"
 
 # python train.py
 
@@ -252,7 +249,7 @@ if __name__ == "__main__":
         }
     }
 
-    checkpoint_path = 'gpt_checkpoint.pt'
+    checkpoint_path = 'gptAK_checkpoint.pt'
     torch.save(checkpoint, checkpoint_path)
     print(f'\nModel checkpoint saved to {checkpoint_path}')
     print(f'Final training loss: {lossi[-1]:.4f}')
